@@ -87,23 +87,83 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
-  Map<String, List<AssetEntity>> _groupedPhotos = {};
-  List<String> _monthKeys = [];
+class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
+  List<AssetEntity> _photos = [];
   Map<String, String> _monthStatuses = {};
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadMonthStatuses();
-    _fetchPhotos();
+    WidgetsBinding.instance.addObserver(this);
+    _loadPhotos();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _silentRefreshPhotos(); // Auto-refresh when returning to app
+    }
+  }
+
+  Future<void> _silentRefreshPhotos() async {
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (ps.isAuth || ps == PermissionState.limited) {
+      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
+      if (albums.isNotEmpty) {
+        int count = await albums[0].assetCountAsync;
+        List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
+        
+        setState(() {
+          _photos = photos;
+        });
+        _loadMonthStatuses();
+      }
+    }
+  }
+
+  Future<void> _loadPhotos() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (ps.isAuth || ps == PermissionState.limited) {
+      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
+      if (albums.isNotEmpty) {
+        int count = await albums[0].assetCountAsync;
+        List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
+        
+        setState(() {
+          _photos = photos;
+          _isLoading = false;
+        });
+        _loadMonthStatuses();
+      } else {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    } else {
+      setState(() {
+        _isLoading = false;
+      });
+      PhotoManager.openSetting();
+    }
   }
 
   Future<void> _loadMonthStatuses() async {
     final prefs = await SharedPreferences.getInstance();
     Map<String, String> statuses = {};
-    for (String key in _monthKeys) {
+    
+    Map<String, List<AssetEntity>> grouped = _groupPhotos();
+    for (String key in grouped.keys) {
       String? status = prefs.getString('status_$key');
       if (status != null) {
         statuses[key] = status;
@@ -114,41 +174,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  Future<void> _fetchPhotos() async {
-    final PermissionState ps = await PhotoManager.requestPermissionExtend();
-    if (ps.isAuth || ps == PermissionState.limited) {
-      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
-      if (albums.isNotEmpty) {
-        // Fetch ALL photos and videos
-        int count = await albums[0].assetCountAsync;
-        List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
-        
-        Map<String, List<AssetEntity>> tempGroup = {};
-        const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-        
-        for (var photo in photos) {
-          final date = photo.createDateTime;
-          final key = '${months[date.month - 1]} ${date.year}';
-          if (!tempGroup.containsKey(key)) {
-            tempGroup[key] = [];
-          }
-          tempGroup[key]!.add(photo);
-        }
-        
-        setState(() {
-          _groupedPhotos = tempGroup;
-          _monthKeys = tempGroup.keys.toList();
-          _isLoading = false;
-        });
-        _loadMonthStatuses();
+  Map<String, List<AssetEntity>> _groupPhotos() {
+    Map<String, List<AssetEntity>> tempGroup = {};
+    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    
+    for (var photo in _photos) {
+      final date = photo.createDateTime;
+      final key = '${months[date.month - 1]} ${date.year}';
+      if (!tempGroup.containsKey(key)) {
+        tempGroup[key] = [];
       }
-    } else {
-      PhotoManager.openSetting();
+      tempGroup[key]!.add(photo);
     }
+    return tempGroup;
+  }
+
+  void _openMonth(String monthKey, List<AssetEntity> monthPhotos) async {
+    final result = await Navigator.push(
+      context,
+      CupertinoPageRoute(
+        builder: (context) => SwipeScreen(title: monthKey, photos: monthPhotos),
+      ),
+    );
+    
+    if (result != null && result is List<AssetEntity> && result.isNotEmpty) {
+      setState(() {
+        _photos.removeWhere((p) => result.any((d) => d.id == p.id));
+      });
+      _loadMonthStatuses();
+    }
+    
+    // Auto-refresh silently from native gallery when returning from SwipeScreen
+    _silentRefreshPhotos();
   }
 
   @override
   Widget build(BuildContext context) {
+    final groupedPhotos = _groupPhotos();
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -175,25 +237,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               if (_isLoading)
                 const SliverFillRemaining(child: Center(child: CupertinoActivityIndicator(radius: 16)))
-              else if (_monthKeys.isEmpty)
+              else if (groupedPhotos.isEmpty)
                 const SliverFillRemaining(child: Center(child: Text("Fotoğraf bulunamadı", style: TextStyle(color: Colors.white54))))
               else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        final key = _monthKeys[index];
-                        final photos = _groupedPhotos[key]!;
+                SliverFillRemaining(
+                  child: RefreshIndicator(
+                    onRefresh: _loadPhotos,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                      itemCount: groupedPhotos.keys.length,
+                      itemBuilder: (context, index) {
+                        final key = groupedPhotos.keys.elementAt(index);
+                        final photos = groupedPhotos[key]!;
                         final status = _monthStatuses[key];
                         return MonthCard(
                           title: key, 
                           photos: photos,
                           status: status,
-                          onRefresh: _loadMonthStatuses,
+                          onTap: () => _openMonth(key, photos),
                         );
                       },
-                      childCount: _monthKeys.length,
                     ),
                   ),
                 ),
@@ -210,19 +273,16 @@ class MonthCard extends StatelessWidget {
   final String title;
   final List<AssetEntity> photos;
   final String? status;
-  final VoidCallback onRefresh;
+  final VoidCallback onTap;
 
-  const MonthCard({Key? key, required this.title, required this.photos, required this.status, required this.onRefresh}) : super(key: key);
+  const MonthCard({Key? key, required this.title, required this.photos, required this.status, required this.onTap}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: GestureDetector(
-        onTap: () async {
-          await Navigator.push(context, CupertinoPageRoute(builder: (context) => SwipeScreen(title: title, photos: photos)));
-          onRefresh();
-        },
+        onTap: onTap,
         child: Container(
           width: double.infinity,
           height: 120,
@@ -241,7 +301,6 @@ class MonthCard extends StatelessWidget {
             padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
-                // Thumbnails Preview Stack
                 SizedBox(
                   width: 80,
                   height: 80,
@@ -276,7 +335,6 @@ class MonthCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 20),
-                // Text info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,7 +400,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final ValueNotifier<bool> stopVideoNotifier = ValueNotifier<bool>(false);
 
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
-    stopVideoNotifier.value = !stopVideoNotifier.value; // Toggle to trigger listeners
+    stopVideoNotifier.value = !stopVideoNotifier.value; 
     if (direction == CardSwiperDirection.left) {
       _pendingDeletes.add(widget.photos[previousIndex]);
       _triggerHaptic(true);
@@ -374,7 +432,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
         photosToDelete: _pendingDeletes, 
         isFinishedEarly: isFinishedEarly,
         onConfirm: () async {
-          Navigator.pop(context); // Close modal
+          Navigator.pop(context); 
           
           if (_pendingDeletes.isNotEmpty) {
             List<String> uris = _pendingDeletes.map((e) {
@@ -384,7 +442,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
               return "content://media/external/images/media/${e.id}";
             }).toList();
             
-            // Fire the native trash intent asynchronously without awaiting
             NativeBridge.trashPhotos(uris).then((success) {
               if (success && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -393,20 +450,12 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
-              } else if (!success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Islem iptal edildi veya basarisiz.', style: TextStyle(fontWeight: FontWeight.w600)), 
-                  backgroundColor: const Color(0xFFFF453A),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ));
               }
             });
             
-            // Immediately mark status and pop back to dashboard
             await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
             if (mounted) {
-              Navigator.pop(context); 
+              Navigator.pop(context, _pendingDeletes); 
             }
           } else {
             await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
@@ -428,7 +477,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
           SafeArea(
             child: Column(
               children: [
-                // Apple Quality Glass Header
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                   child: Row(

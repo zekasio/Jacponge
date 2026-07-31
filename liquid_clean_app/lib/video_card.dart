@@ -74,134 +74,137 @@ class _LiquidCardState extends State<LiquidCard> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
+    double aspect = 1.0;
+    if (widget.photo.width > 0 && widget.photo.height > 0) {
+      aspect = widget.photo.width / widget.photo.height;
+    }
+
     return RepaintBoundary(
       child: FutureBuilder<Uint8List?>(
-        future: widget.photo.thumbnailDataWithSize(const ThumbnailSize(540, 540)), // Video kalitesi 540p siniri icin thumbnail'i de 540 yapiyoruz
+        future: widget.photo.thumbnailDataWithSize(const ThumbnailSize(1000, 1000)), 
         builder: (context, snapshot) {
-          return Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(32),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 20))
-              ]
-            ),
-            child: Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFF121212), // Solid background to hide cards behind
-                borderRadius: BorderRadius.circular(32),
-                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.0)]),
-              ),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // 1. Thumbnail Background
-                  if (snapshot.hasData)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: Image.memory(snapshot.data!, fit: BoxFit.contain),
-                    ),
+          return Center(
+            child: AspectRatio(
+              aspectRatio: aspect,
+              child: Container(
+                width: double.infinity,
+                height: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF121212),
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 20))
+                  ]
+                ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // 1. Thumbnail Background
+                    if (snapshot.hasData)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: Image.memory(snapshot.data!, fit: BoxFit.cover), // Can use cover now since AspectRatio is exact
+                      ),
+                      
+                    // 2. Video Player Overlay
+                    if (_videoController != null && _videoController!.value.isInitialized)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _videoController!.value.size.width,
+                            height: _videoController!.value.size.height,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        ),
+                      ),
+
+                    // 3. Play Button for Videos
+                    if (widget.photo.type == AssetType.video)
+                      Center(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (_videoController != null && _videoController!.value.isInitialized)
+                              GestureDetector(
+                                onTap: () {
+                                  final current = _videoController!.value.position;
+                                  _videoController!.seekTo(current - const Duration(seconds: 10));
+                                },
+                                child: Container(
+                                  width: 48, height: 48,
+                                  margin: const EdgeInsets.only(right: 20),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.black.withOpacity(0.4),
+                                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                                  ),
+                                  child: const Icon(CupertinoIcons.gobackward_10, color: Colors.white, size: 24),
+                                ),
+                              ),
+                              
+                            GestureDetector(
+                              onTap: _togglePlay,
+                              child: Container(
+                                width: 72, height: 72,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withOpacity(0.4),
+                                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                                ),
+                                child: _isInitializing 
+                                  ? const CupertinoActivityIndicator(color: Colors.white)
+                                  : Icon(
+                                      _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, 
+                                      color: Colors.white, 
+                                      size: 36
+                                    ),
+                              ),
+                            ),
+
+                            if (_videoController != null && _videoController!.value.isInitialized)
+                              GestureDetector(
+                                onTap: () {
+                                  final current = _videoController!.value.position;
+                                  _videoController!.seekTo(current + const Duration(seconds: 10));
+                                },
+                                child: Container(
+                                  width: 48, height: 48,
+                                  margin: const EdgeInsets.only(left: 20),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Colors.black.withOpacity(0.4),
+                                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                                  ),
+                                  child: const Icon(CupertinoIcons.goforward_10, color: Colors.white, size: 24),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     
-                  // 2. Video Player Overlay
-                  if (_videoController != null && _videoController!.value.isInitialized)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: _videoController!.value.size.width,
-                          height: _videoController!.value.size.height,
-                          child: VideoPlayer(_videoController!),
+                    // 4. Advanced Specular Edge Highlight
+                    IgnorePointer(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Colors.white.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.7)],
+                            stops: const [0.0, 0.3, 1.0]
+                          )
                         ),
                       ),
                     ),
-
-                  // 3. Play Button for Videos
-                  if (widget.photo.type == AssetType.video)
-                    Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          if (_videoController != null && _videoController!.value.isInitialized)
-                            GestureDetector(
-                              onTap: () {
-                                final current = _videoController!.value.position;
-                                _videoController!.seekTo(current - const Duration(seconds: 10));
-                              },
-                              child: Container(
-                                width: 48, height: 48,
-                                margin: const EdgeInsets.only(right: 20),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.black.withOpacity(0.4),
-                                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-                                ),
-                                child: const Icon(CupertinoIcons.gobackward_10, color: Colors.white, size: 24),
-                              ),
-                            ),
-                            
-                          GestureDetector(
-                            onTap: _togglePlay,
-                            child: Container(
-                              width: 72, height: 72,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.black.withOpacity(0.4),
-                                border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
-                              ),
-                              child: _isInitializing 
-                                ? const CupertinoActivityIndicator(color: Colors.white)
-                                : Icon(
-                                    _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, 
-                                    color: Colors.white, 
-                                    size: 36
-                                  ),
-                            ),
-                          ),
-
-                          if (_videoController != null && _videoController!.value.isInitialized)
-                            GestureDetector(
-                              onTap: () {
-                                final current = _videoController!.value.position;
-                                _videoController!.seekTo(current + const Duration(seconds: 10));
-                              },
-                              child: Container(
-                                width: 48, height: 48,
-                                margin: const EdgeInsets.only(left: 20),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.black.withOpacity(0.4),
-                                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-                                ),
-                                child: const Icon(CupertinoIcons.goforward_10, color: Colors.white, size: 24),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  
-                  // 4. Advanced Specular Edge Highlight
-                  IgnorePointer(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(30),
-                        border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.white.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.7)],
-                          stops: const [0.0, 0.3, 1.0]
-                        )
-                      ),
-                    ),
-                  ),
-                ],
-              )
+                  ],
+                )
+              ),
             ),
           );
         }

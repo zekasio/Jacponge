@@ -485,7 +485,9 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     cardsCount: widget.photos.length,
                     onSwipe: _onSwipe,
                     onEnd: () => _onEnd(isFinishedEarly: false),
-                    numberOfCardsDisplayed: 3,
+                    isHorizontalSwipingEnabled: true,
+                    isVerticalSwipingEnabled: false,
+                    numberOfCardsDisplayed: 2,
                     padding: const EdgeInsets.all(24),
                     cardBuilder: (context, index) {
                       return LiquidCard(

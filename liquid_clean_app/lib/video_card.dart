@@ -92,6 +92,7 @@ class _LiquidCardState extends State<LiquidCard> {
               width: double.infinity,
               height: double.infinity,
               decoration: BoxDecoration(
+                color: const Color(0xFF121212), // Solid background to hide cards behind
                 borderRadius: BorderRadius.circular(32),
                 border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
                 gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.0)]),
@@ -103,7 +104,7 @@ class _LiquidCardState extends State<LiquidCard> {
                   if (snapshot.hasData)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(30),
-                      child: Image.memory(snapshot.data!, fit: BoxFit.cover),
+                      child: Image.memory(snapshot.data!, fit: BoxFit.contain),
                     ),
                     
                   // 2. Video Player Overlay
@@ -111,7 +112,7 @@ class _LiquidCardState extends State<LiquidCard> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(30),
                       child: FittedBox(
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                         child: SizedBox(
                           width: _videoController!.value.size.width,
                           height: _videoController!.value.size.height,

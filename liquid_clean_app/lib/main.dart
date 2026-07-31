@@ -384,31 +384,29 @@ class _SwipeScreenState extends State<SwipeScreen> {
               return "content://media/external/images/media/${e.id}";
             }).toList();
             
-            bool success = await NativeBridge.trashPhotos(uris);
-            
-            if (success) {
-              await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
-              if (mounted) {
+            // Fire the native trash intent asynchronously without awaiting
+            NativeBridge.trashPhotos(uris).then((success) {
+              if (success && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: const Text('Fotograflar Cop Kutusuna Tasindi', style: TextStyle(fontWeight: FontWeight.w600)), 
                   backgroundColor: const Color(0xFF34C759),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
-                Navigator.pop(context); // Return to dashboard
-              }
-            } else {
-              if (mounted) {
+              } else if (!success && mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: const Text('Islem iptal edildi veya basarisiz.', style: TextStyle(fontWeight: FontWeight.w600)), 
                   backgroundColor: const Color(0xFFFF453A),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
-                // Optional: You could pop here too if you want, but usually on cancel we just stay in Swiper.
-                // Let's pop to dashboard anyway to fulfill the request.
-                Navigator.pop(context); 
               }
+            });
+            
+            // Immediately mark status and pop back to dashboard
+            await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
+            if (mounted) {
+              Navigator.pop(context); 
             }
           } else {
             await _markStatus(isFinishedEarly ? 'halfway' : 'completed');

@@ -7,7 +7,9 @@ import 'package:flutter_card_swiper/flutter_card_swiper.dart';
 import 'package:glassmorphism/glassmorphism.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:vibration/vibration.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'native_bridge.dart';
+import 'video_card.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -88,21 +90,38 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, List<AssetEntity>> _groupedPhotos = {};
   List<String> _monthKeys = [];
+  Map<String, String> _monthStatuses = {};
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _loadMonthStatuses();
     _fetchPhotos();
+  }
+
+  Future<void> _loadMonthStatuses() async {
+    final prefs = await SharedPreferences.getInstance();
+    Map<String, String> statuses = {};
+    for (String key in _monthKeys) {
+      String? status = prefs.getString('status_$key');
+      if (status != null) {
+        statuses[key] = status;
+      }
+    }
+    setState(() {
+      _monthStatuses = statuses;
+    });
   }
 
   Future<void> _fetchPhotos() async {
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
     if (ps.isAuth || ps == PermissionState.limited) {
-      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.image);
+      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
       if (albums.isNotEmpty) {
-        // Fetch up to 1000 recent photos to group
-        List<AssetEntity> photos = await albums[0].getAssetListPaged(page: 0, size: 1000);
+        // Fetch ALL photos and videos
+        int count = await albums[0].assetCountAsync;
+        List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
         
         Map<String, List<AssetEntity>> tempGroup = {};
         const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -121,6 +140,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _monthKeys = tempGroup.keys.toList();
           _isLoading = false;
         });
+        _loadMonthStatuses();
       }
     } else {
       PhotoManager.openSetting();
@@ -165,7 +185,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       (context, index) {
                         final key = _monthKeys[index];
                         final photos = _groupedPhotos[key]!;
-                        return MonthCard(title: key, photos: photos);
+                        final status = _monthStatuses[key];
+                        return MonthCard(
+                          title: key, 
+                          photos: photos,
+                          status: status,
+                          onRefresh: _loadMonthStatuses,
+                        );
                       },
                       childCount: _monthKeys.length,
                     ),
@@ -183,16 +209,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class MonthCard extends StatelessWidget {
   final String title;
   final List<AssetEntity> photos;
+  final String? status;
+  final VoidCallback onRefresh;
 
-  const MonthCard({Key? key, required this.title, required this.photos}) : super(key: key);
+  const MonthCard({Key? key, required this.title, required this.photos, required this.status, required this.onRefresh}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: GestureDetector(
-        onTap: () {
-          Navigator.push(context, CupertinoPageRoute(builder: (context) => SwipeScreen(title: title, photos: photos)));
+        onTap: () async {
+          await Navigator.push(context, CupertinoPageRoute(builder: (context) => SwipeScreen(title: title, photos: photos)));
+          onRefresh();
         },
         child: GlassmorphicContainer(
           width: double.infinity,
@@ -255,8 +284,35 @@ class MonthCard extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: -0.5)),
-                      const SizedBox(height: 4),
-                      Text('${photos.length} Fotoğraf', style: const TextStyle(fontSize: 15, color: Colors.white54)),
+                      const SizedBox(height: 6),
+                      if (status == 'completed')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: const Color(0xFF34C759).withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF34C759))),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(CupertinoIcons.checkmark_alt_circle_fill, color: Color(0xFF34C759), size: 14), 
+                              SizedBox(width: 4), 
+                              Text('Tamamlandi', style: TextStyle(color: Color(0xFF34C759), fontSize: 12, fontWeight: FontWeight.w700))
+                            ]
+                          ),
+                        )
+                      else if (status == 'halfway')
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: const Color(0xFFFF9F0A).withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFFF9F0A))),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(CupertinoIcons.pause_circle_fill, color: Color(0xFFFF9F0A), size: 14), 
+                              SizedBox(width: 4), 
+                              Text('Yarida Kaldi', style: TextStyle(color: Color(0xFFFF9F0A), fontSize: 12, fontWeight: FontWeight.w700))
+                            ]
+                          ),
+                        )
+                      else
+                        Text('${photos.length} Fotograf', style: const TextStyle(fontSize: 15, color: Colors.white54)),
                     ],
                   ),
                 ),
@@ -304,24 +360,39 @@ class _SwipeScreenState extends State<SwipeScreen> {
     }
   }
 
-  void _onEnd() {
+  Future<void> _markStatus(String status) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('status_${widget.title}', status);
+  }
+
+  void _onEnd({bool isFinishedEarly = false}) {
     showCupertinoModalPopup(
       context: context,
       builder: (context) => SummaryModal(
         photosToDelete: _pendingDeletes, 
+        isFinishedEarly: isFinishedEarly,
         onConfirm: () async {
-          Navigator.pop(context);
-          List<String> uris = _pendingDeletes.map((e) => "content://media/external/images/media/${e.id}").toList();
-          bool success = await NativeBridge.trashPhotos(uris);
+          Navigator.pop(context); // Close modal
           
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: const Text('Fotoğraflar Çöp Kutusuna Taşındı', style: TextStyle(fontWeight: FontWeight.w600)), 
-              backgroundColor: const Color(0xFF34C759), // Apple Green
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ));
-            Navigator.pop(context); // Return to dashboard
+          if (_pendingDeletes.isNotEmpty) {
+            List<String> uris = _pendingDeletes.map((e) => "content://media/external/images/media/${e.id}").toList();
+            bool success = await NativeBridge.trashPhotos(uris);
+            
+            if (success) {
+              await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: const Text('Fotograflar Cop Kutusuna Tasindi', style: TextStyle(fontWeight: FontWeight.w600)), 
+                  backgroundColor: const Color(0xFF34C759),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ));
+                Navigator.pop(context); // Return to dashboard
+              }
+            }
+          } else {
+            await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
+            if (mounted) Navigator.pop(context);
           }
         }
       )
@@ -370,6 +441,21 @@ class _SwipeScreenState extends State<SwipeScreen> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 16),
+                      // NEW: Bitir (Finish) Button
+                      GestureDetector(
+                        onTap: () => _onEnd(isFinishedEarly: true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0A84FF).withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: const Color(0xFF0A84FF), width: 1.5),
+                            boxShadow: [BoxShadow(color: const Color(0xFF0A84FF).withOpacity(0.2), blurRadius: 10)]
+                          ),
+                          child: const Text('Bitir', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -380,7 +466,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     controller: controller,
                     cardsCount: widget.photos.length,
                     onSwipe: _onSwipe,
-                    onEnd: _onEnd,
+                    onEnd: () => _onEnd(isFinishedEarly: false),
                     numberOfCardsDisplayed: 3,
                     padding: const EdgeInsets.all(24),
                     cardBuilder: (context, index) {
@@ -449,72 +535,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 }
 
-// ------ Liquid Card Widget (AAA Quality) ------
-class LiquidCard extends StatelessWidget {
-  final AssetEntity photo;
-
-  const LiquidCard({Key? key, required this.photo}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: FutureBuilder<Uint8List?>(
-        future: photo.thumbnailDataWithSize(const ThumbnailSize(500, 500)),
-      builder: (context, snapshot) {
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(32),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 20))
-            ]
-          ),
-          child: GlassmorphicContainer(
-            width: double.infinity,
-            height: double.infinity,
-            borderRadius: 32,
-            blur: 20,
-            alignment: Alignment.center,
-            border: 1.5,
-            linearGradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.0)]),
-            borderGradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.6), Colors.white.withOpacity(0.1)]),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                if (snapshot.hasData)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(30),
-                    child: Image.memory(snapshot.data!, fit: BoxFit.cover),
-                  ),
-                
-                // Advanced Specular Edge Highlight
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: Colors.white.withOpacity(0.3), width: 0.5),
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.white.withOpacity(0.4), Colors.transparent, Colors.black.withOpacity(0.7)],
-                      stops: const [0.0, 0.3, 1.0]
-                    )
-                  ),
-                ),
-              ],
-            )
-          ),
-        );
-      }
-    ),
-    );
-  }
-}
-
 // ------ Month Summary Modal (Apple Bottom Sheet style) ------
 class SummaryModal extends StatelessWidget {
   final List<AssetEntity> photosToDelete;
+  final bool isFinishedEarly;
   final VoidCallback onConfirm;
 
-  const SummaryModal({Key? key, required this.photosToDelete, required this.onConfirm}) : super(key: key);
+  const SummaryModal({Key? key, required this.photosToDelete, required this.isFinishedEarly, required this.onConfirm}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -529,13 +556,15 @@ class SummaryModal extends StatelessWidget {
           const SizedBox(height: 12),
           Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
           const SizedBox(height: 24),
-          const Text('Temizlik Özeti', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5)),
+          const Text('Temizlik Ozeti', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5)),
           const SizedBox(height: 8),
-          Text('${photosToDelete.length} fotoğraf cihazın Çöp Kutusuna taşınacak.', style: const TextStyle(color: Colors.white70, fontSize: 15), textAlign: TextAlign.center),
+          Text(photosToDelete.isEmpty ? 'Hic fotograf silmediniz.' : '${photosToDelete.length} fotograf cihazin Cop Kutusuna tasinacak.', style: const TextStyle(color: Colors.white70, fontSize: 15), textAlign: TextAlign.center),
           const SizedBox(height: 24),
           
           Expanded(
-            child: GridView.builder(
+            child: photosToDelete.isEmpty 
+              ? const Center(child: Icon(CupertinoIcons.checkmark_seal_fill, size: 80, color: Color(0xFF34C759)))
+              : GridView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               itemCount: photosToDelete.length,
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
@@ -567,10 +596,10 @@ class SummaryModal extends StatelessWidget {
               width: double.infinity,
               height: 56,
               child: CupertinoButton(
-                color: const Color(0xFFFF453A),
+                color: photosToDelete.isEmpty ? (isFinishedEarly ? const Color(0xFFFF9F0A) : const Color(0xFF34C759)) : const Color(0xFFFF453A),
                 borderRadius: BorderRadius.circular(16),
-                onPressed: photosToDelete.isEmpty ? null : onConfirm,
-                child: Text('${photosToDelete.length} Fotoğrafı Çöpe At', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.white)),
+                onPressed: onConfirm,
+                child: Text(photosToDelete.isEmpty ? (isFinishedEarly ? 'Yarida Birak' : 'Ayi Tamamla') : '${photosToDelete.length} Fotografi Cope At', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.white)),
               ),
             ),
           )

@@ -491,6 +491,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     padding: const EdgeInsets.all(24),
                     cardBuilder: (context, index) {
                       return LiquidCard(
+                        key: ValueKey(widget.photos[index].id),
                         photo: widget.photos[index], 
                         stopVideoNotifier: stopVideoNotifier
                       );

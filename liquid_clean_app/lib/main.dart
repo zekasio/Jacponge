@@ -47,10 +47,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _fetchPhotos() async {
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
-    if (ps.isAuth) {
+    if (ps.isAuth || ps == PermissionState.limited) {
       List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.image);
       if (albums.isNotEmpty) {
-        List<AssetEntity> photos = await albums[0].getAssetListPaged(page: 0, size: 50);
+        List<AssetEntity> photos = await albums[0].getAssetListPaged(page: 0, size: 200);
         setState(() {
           _photos = photos;
           _isLoading = false;
@@ -76,9 +76,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.all(24.0),
-                  child: Text('Ağustos 2025\nSıvı Deste', style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.white, height: 1.1)),
+                Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Builder(
+                    builder: (context) {
+                      String title = "Sıvı Deste";
+                      if (_photos.isNotEmpty) {
+                        final date = _photos.first.createDateTime;
+                        const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+                        title = '${months[date.month - 1]} ${date.year}\nSıvı Deste';
+                      }
+                      return Text(title, style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.white, height: 1.1));
+                    }
+                  ),
                 ),
                 
                 Expanded(

@@ -1,28 +1,3 @@
-#!/bin/bash
-set -e
-
-WORKSPACE=/workspaces/Jacponge
-export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-export ANDROID_HOME=$WORKSPACE/android_sdk
-export PATH=$JAVA_HOME/bin:$ANDROID_HOME/cmdline-tools/latest/bin:$WORKSPACE/flutter/bin:$PATH
-
-echo "Creating standard Flutter scaffold..."
-cd $WORKSPACE
-flutter create --platforms=android --org com.jacponge liquid_clean_app
-
-echo "Copying custom code..."
-# Copy custom lib files
-cp $WORKSPACE/liquid_clean_flutter/lib/*.dart $WORKSPACE/liquid_clean_app/lib/
-
-# Copy pubspec
-cp $WORKSPACE/liquid_clean_flutter/pubspec.yaml $WORKSPACE/liquid_clean_app/
-
-# Copy custom MainActivity
-mkdir -p $WORKSPACE/liquid_clean_app/android/app/src/main/kotlin/com/jacponge/liquid_clean_app/
-# Wait, flutter create with org com.jacponge creates MainActivity in com.jacponge.liquid_clean_app
-# So I'll just write the custom Kotlin file directly there to ensure package name matches.
-
-cat << 'EOF' > $WORKSPACE/liquid_clean_app/android/app/src/main/kotlin/com/jacponge/liquid_clean_app/MainActivity.kt
 package com.jacponge.liquid_clean_app
 
 import android.app.Activity
@@ -85,23 +60,3 @@ class MainActivity: FlutterActivity() {
         }
     }
 }
-EOF
-
-# Update AndroidManifest to add permissions
-sed -i '/<application/i \
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />\
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>\
-    <uses-permission android:name="android.permission.VIBRATE"/>\
-' $WORKSPACE/liquid_clean_app/android/app/src/main/AndroidManifest.xml
-
-# Update build.gradle to ensure minSdk is at least 21 for the plugins (e.g. photo_manager requires higher minsdk)
-sed -i 's/flutter.minSdkVersion/21/g' $WORKSPACE/liquid_clean_app/android/app/build.gradle
-
-echo "Building APK..."
-cd $WORKSPACE/liquid_clean_app
-flutter pub get
-flutter build apk --release
-
-echo "Build complete! APK should be in liquid_clean_app/build/app/outputs/flutter-apk/"
-cp build/app/outputs/flutter-apk/app-release.apk $WORKSPACE/LiquidClean-PRO.apk

@@ -1,0 +1,24 @@
+name: liquid_clean
+description: Liquid Glass Tinder Style Photo Cleaner
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  flutter_card_swiper: ^4.0.0 # For Tinder Swipe
+  glassmorphism: ^3.0.0
+  photo_manager: 3.0.0 # Native photo gallery access
+  vibration: ^1.8.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true

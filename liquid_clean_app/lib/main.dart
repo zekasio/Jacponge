@@ -52,20 +52,24 @@ class AmbientBackground extends StatelessWidget {
           top: -150, left: -100,
           child: Container(
             width: 400, height: 400,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF5E5CE6)), // Indigo
+            decoration: BoxDecoration(
+              shape: BoxShape.circle, 
+              gradient: RadialGradient(
+                colors: [const Color(0xFF5E5CE6).withOpacity(0.6), Colors.transparent],
+              )
+            ), 
           ),
         ),
         Positioned(
           bottom: -100, right: -150,
           child: Container(
             width: 500, height: 500,
-            decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF0A84FF)), // Blue
-          ),
-        ),
-        Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 120, sigmaY: 120),
-            child: Container(color: Colors.black.withOpacity(0.5)),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle, 
+              gradient: RadialGradient(
+                colors: [const Color(0xFF0A84FF).withOpacity(0.6), Colors.transparent],
+              )
+            ),
           ),
         ),
       ],
@@ -140,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 stretch: true,
                 flexibleSpace: ClipRect(
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: FlexibleSpaceBar(
                       titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
                       title: const Text('Fotoğraflar', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 28, letterSpacing: -1, color: Colors.white)),
@@ -453,8 +457,9 @@ class LiquidCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Uint8List?>(
-      future: photo.thumbnailDataWithSize(const ThumbnailSize(800, 800)),
+    return RepaintBoundary(
+      child: FutureBuilder<Uint8List?>(
+        future: photo.thumbnailDataWithSize(const ThumbnailSize(500, 500)),
       builder: (context, snapshot) {
         return Container(
           decoration: BoxDecoration(
@@ -499,6 +504,7 @@ class LiquidCard extends StatelessWidget {
           ),
         );
       }
+    ),
     );
   }
 }

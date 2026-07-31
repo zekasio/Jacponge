@@ -8,8 +8,9 @@ import 'package:glassmorphism/glassmorphism.dart';
 
 class LiquidCard extends StatefulWidget {
   final AssetEntity photo;
+  final ValueNotifier<bool> stopVideoNotifier;
 
-  const LiquidCard({Key? key, required this.photo}) : super(key: key);
+  const LiquidCard({Key? key, required this.photo, required this.stopVideoNotifier}) : super(key: key);
 
   @override
   State<LiquidCard> createState() => _LiquidCardState();
@@ -21,7 +22,21 @@ class _LiquidCardState extends State<LiquidCard> {
   bool _isInitializing = false;
 
   @override
+  void initState() {
+    super.initState();
+    widget.stopVideoNotifier.addListener(_onSwipeEvent);
+  }
+
+  void _onSwipeEvent() {
+    if (_videoController != null && _videoController!.value.isPlaying) {
+      _videoController!.pause();
+      if (mounted) setState(() => _isPlaying = false);
+    }
+  }
+
+  @override
   void dispose() {
+    widget.stopVideoNotifier.removeListener(_onSwipeEvent);
     _videoController?.dispose();
     super.dispose();
   }
@@ -73,15 +88,14 @@ class _LiquidCardState extends State<LiquidCard> {
                 BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 30, offset: const Offset(0, 20))
               ]
             ),
-            child: GlassmorphicContainer(
+            child: Container(
               width: double.infinity,
               height: double.infinity,
-              borderRadius: 32,
-              blur: 20,
-              alignment: Alignment.center,
-              border: 1.5,
-              linearGradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.0)]),
-              borderGradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.6), Colors.white.withOpacity(0.1)]),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Colors.white.withOpacity(0.2), Colors.white.withOpacity(0.0)]),
+              ),
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -109,23 +123,64 @@ class _LiquidCardState extends State<LiquidCard> {
                   // 3. Play Button for Videos
                   if (widget.photo.type == AssetType.video)
                     Center(
-                      child: GestureDetector(
-                        onTap: _togglePlay,
-                        child: Container(
-                          width: 72, height: 72,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.black.withOpacity(0.4),
-                            border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
-                          ),
-                          child: _isInitializing 
-                            ? const CupertinoActivityIndicator(color: Colors.white)
-                            : Icon(
-                                _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, 
-                                color: Colors.white, 
-                                size: 36
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_videoController != null && _videoController!.value.isInitialized)
+                            GestureDetector(
+                              onTap: () {
+                                final current = _videoController!.value.position;
+                                _videoController!.seekTo(current - const Duration(seconds: 10));
+                              },
+                              child: Container(
+                                width: 48, height: 48,
+                                margin: const EdgeInsets.only(right: 20),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withOpacity(0.4),
+                                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                                ),
+                                child: const Icon(CupertinoIcons.gobackward_10, color: Colors.white, size: 24),
                               ),
-                        ),
+                            ),
+                            
+                          GestureDetector(
+                            onTap: _togglePlay,
+                            child: Container(
+                              width: 72, height: 72,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.black.withOpacity(0.4),
+                                border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                              ),
+                              child: _isInitializing 
+                                ? const CupertinoActivityIndicator(color: Colors.white)
+                                : Icon(
+                                    _isPlaying ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, 
+                                    color: Colors.white, 
+                                    size: 36
+                                  ),
+                            ),
+                          ),
+
+                          if (_videoController != null && _videoController!.value.isInitialized)
+                            GestureDetector(
+                              onTap: () {
+                                final current = _videoController!.value.position;
+                                _videoController!.seekTo(current + const Duration(seconds: 10));
+                              },
+                              child: Container(
+                                width: 48, height: 48,
+                                margin: const EdgeInsets.only(left: 20),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withOpacity(0.4),
+                                  border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                                ),
+                                child: const Icon(CupertinoIcons.goforward_10, color: Colors.white, size: 24),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   

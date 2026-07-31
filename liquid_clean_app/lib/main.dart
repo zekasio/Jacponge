@@ -223,20 +223,19 @@ class MonthCard extends StatelessWidget {
           await Navigator.push(context, CupertinoPageRoute(builder: (context) => SwipeScreen(title: title, photos: photos)));
           onRefresh();
         },
-        child: GlassmorphicContainer(
+        child: Container(
           width: double.infinity,
           height: 120,
-          borderRadius: 24,
-          blur: 30,
-          alignment: Alignment.center,
-          border: 1,
-          linearGradient: LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [Colors.white.withOpacity(0.15), Colors.white.withOpacity(0.02)],
-          ),
-          borderGradient: LinearGradient(
-            begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [Colors.white.withOpacity(0.5), Colors.white.withOpacity(0.0)],
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Colors.white.withOpacity(0.15), Colors.white.withOpacity(0.02)],
+            ),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))
+            ]
           ),
           child: Padding(
             padding: const EdgeInsets.all(16.0),
@@ -340,7 +339,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final CardSwiperController controller = CardSwiperController();
   List<AssetEntity> _pendingDeletes = [];
 
+  final ValueNotifier<bool> stopVideoNotifier = ValueNotifier<bool>(false);
+
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
+    stopVideoNotifier.value = !stopVideoNotifier.value; // Toggle to trigger listeners
     if (direction == CardSwiperDirection.left) {
       _pendingDeletes.add(widget.photos[previousIndex]);
       _triggerHaptic(true);
@@ -375,7 +377,13 @@ class _SwipeScreenState extends State<SwipeScreen> {
           Navigator.pop(context); // Close modal
           
           if (_pendingDeletes.isNotEmpty) {
-            List<String> uris = _pendingDeletes.map((e) => "content://media/external/images/media/${e.id}").toList();
+            List<String> uris = _pendingDeletes.map((e) {
+              if (e.type == AssetType.video) {
+                return "content://media/external/video/media/${e.id}";
+              }
+              return "content://media/external/images/media/${e.id}";
+            }).toList();
+            
             bool success = await NativeBridge.trashPhotos(uris);
             
             if (success) {
@@ -388,6 +396,18 @@ class _SwipeScreenState extends State<SwipeScreen> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ));
                 Navigator.pop(context); // Return to dashboard
+              }
+            } else {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: const Text('Islem iptal edildi veya basarisiz.', style: TextStyle(fontWeight: FontWeight.w600)), 
+                  backgroundColor: const Color(0xFFFF453A),
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                ));
+                // Optional: You could pop here too if you want, but usually on cancel we just stay in Swiper.
+                // Let's pop to dashboard anyway to fulfill the request.
+                Navigator.pop(context); 
               }
             }
           } else {
@@ -470,7 +490,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     numberOfCardsDisplayed: 3,
                     padding: const EdgeInsets.all(24),
                     cardBuilder: (context, index) {
-                      return LiquidCard(photo: widget.photos[index]);
+                      return LiquidCard(
+                        photo: widget.photos[index], 
+                        stopVideoNotifier: stopVideoNotifier
+                      );
                     },
                   ),
                 ),

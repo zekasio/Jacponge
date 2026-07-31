@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.VIBRATE"/>
 
     <application
-        android:label="liquid_clean_app"
+        android:label="Liquid Clean"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

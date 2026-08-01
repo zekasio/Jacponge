@@ -243,14 +243,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 const SliverFillRemaining(child: Center(child: CupertinoActivityIndicator(radius: 16)))
               else if (groupedPhotos.isEmpty)
                 const SliverFillRemaining(child: Center(child: Text("Fotoğraf bulunamadı", style: TextStyle(color: Colors.white54))))
-              else
-                SliverFillRemaining(
-                  child: RefreshIndicator(
-                    onRefresh: _loadPhotos,
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                      itemCount: groupedPhotos.keys.length,
-                      itemBuilder: (context, index) {
+              else ...[
+                CupertinoSliverRefreshControl(
+                  onRefresh: _loadPhotos,
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
                         final key = groupedPhotos.keys.elementAt(index);
                         final photos = groupedPhotos[key]!;
                         final status = _monthStatuses[key];
@@ -261,9 +262,11 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                           onTap: () => _openMonth(key, photos),
                         );
                       },
+                      childCount: groupedPhotos.keys.length,
                     ),
                   ),
                 ),
+              ],
             ],
           ),
         ],

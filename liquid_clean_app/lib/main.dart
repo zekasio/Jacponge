@@ -8,7 +8,6 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:vibration/vibration.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shake/shake.dart';
 import 'package:confetti/confetti.dart';
 import 'dart:math';
 import 'native_bridge.dart';
@@ -406,34 +405,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
   int _currentIndex = 0;
 
   final ValueNotifier<bool> stopVideoNotifier = ValueNotifier<bool>(false);
-  
-  late ShakeDetector _shakeDetector;
   late ConfettiController _confettiController;
-  
-  // Gamification (Combo) State
-  int _comboCount = 0;
-  DateTime? _lastSwipeTime;
-  String _comboText = "";
-  bool _showCombo = false;
 
   @override
   void initState() {
     super.initState();
     _confettiController = ConfettiController(duration: const Duration(seconds: 2));
-    _shakeDetector = ShakeDetector.autoStart(
-      shakeThresholdGravity: 2.7, // Apple devices usually feel right around 2.7g for a deliberate shake
-      onPhoneShake: (_) {
-        // Shake to delete! (Swipe Left)
-        if (_currentIndex < widget.photos.length) {
-          controller.swipeLeft();
-        }
-      },
-    );
   }
 
   @override
   void dispose() {
-    _shakeDetector.stopListening();
     _confettiController.dispose();
     super.dispose();
   }
@@ -441,29 +422,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
     stopVideoNotifier.value = !stopVideoNotifier.value; 
     _currentIndex = currentIndex ?? widget.photos.length;
-    
-    // Combo Logic
-    final now = DateTime.now();
-    if (_lastSwipeTime != null && now.difference(_lastSwipeTime!).inMilliseconds < 800) {
-      _comboCount++;
-    } else {
-      _comboCount = 1;
-    }
-    _lastSwipeTime = now;
-
-    if (_comboCount >= 3) {
-      setState(() {
-        _comboText = "${_comboCount}X COMBO!";
-        _showCombo = true;
-      });
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted && _comboCount < 3) { // Hide if combo broken
-           setState(() => _showCombo = false);
-        }
-      });
-    } else {
-      setState(() => _showCombo = false);
-    }
 
     if (direction == CardSwiperDirection.left) {
       _pendingDeletes.add(widget.photos[previousIndex]);
@@ -677,35 +635,6 @@ class _SwipeScreenState extends State<SwipeScreen> {
               ],
             ),
           ),
-          
-          // Combo Text Overlay
-          if (_showCombo)
-            Positioned(
-              top: MediaQuery.of(context).size.height * 0.2,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: AnimatedOpacity(
-                  opacity: _showCombo ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    _comboText,
-                    style: TextStyle(
-                      fontSize: 48,
-                      fontWeight: FontWeight.w900,
-                      fontStyle: FontStyle.italic,
-                      foreground: Paint()
-                        ..shader = const LinearGradient(
-                          colors: [Color(0xFFFFD60A), Color(0xFFFF9F0A)],
-                        ).createShader(const Rect.fromLTWH(0, 0, 200, 70)),
-                      shadows: [
-                        Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
-                      ]
-                    ),
-                  ),
-                ),
-              ),
-            ),
         ],
       )
     ));

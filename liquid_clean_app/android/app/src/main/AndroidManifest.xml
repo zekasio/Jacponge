@@ -10,7 +10,9 @@
     <application
         android:label="Liquid Clean"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        android:allowBackup="true"
+        android:fullBackupOnly="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

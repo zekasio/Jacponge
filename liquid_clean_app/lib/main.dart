@@ -92,6 +92,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingObserver {
   List<AssetEntity> _photos = [];
   Map<String, String> _monthStatuses = {};
+  Map<String, List<String>> _seenIdsByMonth = {};
   bool _isLoading = true;
 
   @override
@@ -163,6 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Future<void> _loadMonthStatuses() async {
     final prefs = await SharedPreferences.getInstance();
     Map<String, String> statuses = {};
+    Map<String, List<String>> seenIds = {};
     
     Map<String, List<AssetEntity>> grouped = _groupPhotos();
     for (String key in grouped.keys) {
@@ -170,9 +172,14 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       if (status != null) {
         statuses[key] = status;
       }
+      List<String>? ids = prefs.getStringList('seen_$key');
+      if (ids != null) {
+        seenIds[key] = ids;
+      }
     }
     setState(() {
       _monthStatuses = statuses;
+      _seenIdsByMonth = seenIds;
     });
   }
 
@@ -192,10 +199,15 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   }
 
   void _openMonth(String monthKey, List<AssetEntity> monthPhotos) async {
+    List<String> seenIds = _seenIdsByMonth[monthKey] ?? [];
+    List<AssetEntity> unseenPhotos = monthPhotos.where((p) => !seenIds.contains(p.id)).toList();
+
+    if (unseenPhotos.isEmpty) return; // Nothing left to review
+
     final result = await Navigator.push(
       context,
       CupertinoPageRoute(
-        builder: (context) => SwipeScreen(title: monthKey, photos: monthPhotos),
+        builder: (context) => SwipeScreen(title: monthKey, photos: unseenPhotos, originalSeenIds: seenIds),
       ),
     );
     
@@ -393,7 +405,8 @@ class MonthCard extends StatelessWidget {
 class SwipeScreen extends StatefulWidget {
   final String title;
   final List<AssetEntity> photos;
-  const SwipeScreen({Key? key, required this.title, required this.photos}) : super(key: key);
+  final List<String> originalSeenIds;
+  const SwipeScreen({Key? key, required this.title, required this.photos, required this.originalSeenIds}) : super(key: key);
 
   @override
   State<SwipeScreen> createState() => _SwipeScreenState();
@@ -403,6 +416,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
   final CardSwiperController controller = CardSwiperController();
   List<AssetEntity> _pendingDeletes = [];
   int _currentIndex = 0;
+  List<String> _newlySeenIds = [];
 
   final ValueNotifier<bool> stopVideoNotifier = ValueNotifier<bool>(false);
   late ConfettiController _confettiController;
@@ -419,9 +433,23 @@ class _SwipeScreenState extends State<SwipeScreen> {
     super.dispose();
   }
 
+  bool _onUndo(int? previousIndex, int currentIndex, CardSwiperDirection direction) {
+    if (_newlySeenIds.isNotEmpty) {
+      String undoneId = widget.photos[currentIndex].id;
+      _newlySeenIds.remove(undoneId);
+      if (direction == CardSwiperDirection.left) {
+        _pendingDeletes.removeWhere((p) => p.id == undoneId);
+      }
+    }
+    _currentIndex = currentIndex;
+    return true;
+  }
+
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
     stopVideoNotifier.value = !stopVideoNotifier.value; 
     _currentIndex = currentIndex ?? widget.photos.length;
+
+    _newlySeenIds.add(widget.photos[previousIndex].id);
 
     if (direction == CardSwiperDirection.left) {
       _pendingDeletes.add(widget.photos[previousIndex]);
@@ -445,6 +473,10 @@ class _SwipeScreenState extends State<SwipeScreen> {
   Future<void> _markStatus(String status) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('status_${widget.title}', status);
+    
+    // Save seen photos
+    List<String> combinedIds = [...widget.originalSeenIds, ..._newlySeenIds];
+    await prefs.setStringList('seen_${widget.title}', combinedIds);
   }
 
   void _onEnd({bool isFinishedEarly = false}) {
@@ -590,6 +622,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
                     controller: controller,
                     cardsCount: widget.photos.length,
                     onSwipe: _onSwipe,
+                    onUndo: _onUndo,
                     onEnd: () => _onEnd(isFinishedEarly: false),
                     isHorizontalSwipingEnabled: true,
                     isVerticalSwipingEnabled: false,

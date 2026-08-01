@@ -94,70 +94,76 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   Map<String, String> _monthStatuses = {};
   Map<String, List<String>> _seenIdsByMonth = {};
   bool _isLoading = true;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    PhotoManager.addChangeCallback((value) {
+      _loadPhotos(silent: true);
+    });
+    PhotoManager.startChangeNotify();
     _loadPhotos();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    PhotoManager.stopChangeNotify();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _silentRefreshPhotos(); // Auto-refresh when returning to app
+      _loadPhotos(silent: true); // Background silent update on resume
     }
   }
 
-  Future<void> _silentRefreshPhotos() async {
-    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+  Future<void> _loadPhotos({bool silent = false}) async {
+    // Only show full loading screen on initial launch if we have no photos yet
+    if (!silent && _photos.isEmpty) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
+
+    PermissionState ps = await PhotoManager.requestPermissionExtend();
     if (ps.isAuth || ps == PermissionState.limited) {
       List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
-      if (albums.isNotEmpty) {
-        int count = await albums[0].assetCountAsync;
-        List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
-        
-        setState(() {
-          _photos = photos;
-        });
-        _loadMonthStatuses();
+      
+      // On first launch permission grant, Android MediaStore needs a brief moment to index
+      if (albums.isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 600));
+        albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
       }
-    }
-  }
 
-  Future<void> _loadPhotos() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    final PermissionState ps = await PhotoManager.requestPermissionExtend();
-    if (ps.isAuth || ps == PermissionState.limited) {
-      List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
       if (albums.isNotEmpty) {
         int count = await albums[0].assetCountAsync;
         List<AssetEntity> photos = await albums[0].getAssetListRange(start: 0, end: count);
         
-        setState(() {
-          _photos = photos;
-          _isLoading = false;
-        });
-        _loadMonthStatuses();
+        if (mounted) {
+          setState(() {
+            _photos = photos;
+            _isLoading = false;
+          });
+          _loadMonthStatuses();
+        }
       } else {
-        setState(() {
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     } else {
-      setState(() {
-        _isLoading = false;
-      });
-      PhotoManager.openSetting();
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      if (!silent) {
+        PhotoManager.openSetting();
+      }
     }
   }
 
@@ -219,7 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
     
     // Auto-refresh silently from native gallery when returning from SwipeScreen
-    _silentRefreshPhotos();
+    _loadPhotos(silent: true);
   }
 
   @override

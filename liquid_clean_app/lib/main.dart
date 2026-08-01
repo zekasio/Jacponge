@@ -486,6 +486,7 @@ class _SwipeScreenState extends State<SwipeScreen> {
     showCupertinoModalPopup(
       context: context,
       builder: (context) => Stack(
+        alignment: Alignment.bottomCenter,
         children: [
           SummaryModal(
             photosToDelete: _pendingDeletes, 
@@ -709,7 +710,7 @@ class SummaryModal extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+      height: MediaQuery.of(context).size.height * 0.65,
       decoration: const BoxDecoration(
         color: Color(0xFF1C1C1E), // Apple Dark Gray
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),

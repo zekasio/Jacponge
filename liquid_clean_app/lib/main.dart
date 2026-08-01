@@ -708,8 +708,12 @@ class SummaryModal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    double height = photosToDelete.isEmpty 
+        ? MediaQuery.of(context).size.height * 0.35 
+        : MediaQuery.of(context).size.height * 0.65;
+        
     return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
+      height: height,
       decoration: const BoxDecoration(
         color: Color(0xFF1C1C1E), // Apple Dark Gray
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),

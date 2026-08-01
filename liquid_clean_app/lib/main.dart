@@ -93,7 +93,8 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
   List<AssetEntity> _photos = [];
   Map<String, String> _monthStatuses = {};
   Map<String, List<String>> _seenIdsByMonth = {};
-  bool _isLoading = true;
+  bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,7 +103,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
       _loadPhotos(silent: true);
     });
     PhotoManager.startChangeNotify();
-    _loadPhotos();
+    _loadPhotos(silent: true);
   }
 
   @override
@@ -119,14 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     }
   }
 
-  Future<void> _loadPhotos({bool silent = false}) async {
-    // Only show full loading screen on initial launch if we have no photos yet
-    if (!silent && _photos.isEmpty) {
-      setState(() {
-        _isLoading = true;
-      });
-    }
-
+  Future<void> _loadPhotos({bool silent = true}) async {
     PermissionState ps = await PhotoManager.requestPermissionExtend();
     if (ps.isAuth || ps == PermissionState.limited) {
       List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);

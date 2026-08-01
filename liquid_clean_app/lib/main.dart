@@ -8,6 +8,9 @@ import 'package:glassmorphism/glassmorphism.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:vibration/vibration.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shake/shake.dart';
+import 'package:confetti/confetti.dart';
+import 'dart:math';
 import 'native_bridge.dart';
 import 'video_card.dart';
 
@@ -224,6 +227,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                 backgroundColor: Colors.transparent,
                 elevation: 0,
                 stretch: true,
+                pinned: true, // NEW: Makes it shrink to a normal appbar on scroll
                 flexibleSpace: ClipRect(
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -396,11 +400,68 @@ class SwipeScreen extends StatefulWidget {
 class _SwipeScreenState extends State<SwipeScreen> {
   final CardSwiperController controller = CardSwiperController();
   List<AssetEntity> _pendingDeletes = [];
+  int _currentIndex = 0;
 
   final ValueNotifier<bool> stopVideoNotifier = ValueNotifier<bool>(false);
+  
+  late ShakeDetector _shakeDetector;
+  late ConfettiController _confettiController;
+  
+  // Gamification (Combo) State
+  int _comboCount = 0;
+  DateTime? _lastSwipeTime;
+  String _comboText = "";
+  bool _showCombo = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _confettiController = ConfettiController(duration: const Duration(seconds: 2));
+    _shakeDetector = ShakeDetector.autoStart(
+      shakeThresholdGravity: 2.7, // Apple devices usually feel right around 2.7g for a deliberate shake
+      onPhoneShake: (_) {
+        // Shake to delete! (Swipe Left)
+        if (_currentIndex < widget.photos.length) {
+          controller.swipeLeft();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _shakeDetector.stopListening();
+    _confettiController.dispose();
+    super.dispose();
+  }
 
   bool _onSwipe(int previousIndex, int? currentIndex, CardSwiperDirection direction) {
     stopVideoNotifier.value = !stopVideoNotifier.value; 
+    _currentIndex = currentIndex ?? widget.photos.length;
+    
+    // Combo Logic
+    final now = DateTime.now();
+    if (_lastSwipeTime != null && now.difference(_lastSwipeTime!).inMilliseconds < 800) {
+      _comboCount++;
+    } else {
+      _comboCount = 1;
+    }
+    _lastSwipeTime = now;
+
+    if (_comboCount >= 3) {
+      setState(() {
+        _comboText = "${_comboCount}X COMBO!";
+        _showCombo = true;
+      });
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (mounted && _comboCount < 3) { // Hide if combo broken
+           setState(() => _showCombo = false);
+        }
+      });
+    } else {
+      setState(() => _showCombo = false);
+    }
+
     if (direction == CardSwiperDirection.left) {
       _pendingDeletes.add(widget.photos[previousIndex]);
       _triggerHaptic(true);
@@ -426,11 +487,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
   }
 
   void _onEnd({bool isFinishedEarly = false}) {
+    if (!isFinishedEarly) {
+      _confettiController.play();
+    }
     showCupertinoModalPopup(
       context: context,
-      builder: (context) => SummaryModal(
-        photosToDelete: _pendingDeletes, 
-        isFinishedEarly: isFinishedEarly,
+      builder: (context) => Stack(
+        children: [
+          SummaryModal(
+            photosToDelete: _pendingDeletes, 
+            isFinishedEarly: isFinishedEarly,
         onConfirm: () async {
           Navigator.pop(context); 
           
@@ -461,29 +527,60 @@ class _SwipeScreenState extends State<SwipeScreen> {
             await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
             if (mounted) Navigator.pop(context);
           }
-        }
-      )
-    );
+        },
+      ),
+      Align(
+        alignment: Alignment.topCenter,
+        child: ConfettiWidget(
+          confettiController: _confettiController,
+          blastDirection: pi / 2, // Down
+          maxBlastForce: 20,
+          minBlastForce: 10,
+          emissionFrequency: 0.05,
+          numberOfParticles: 50,
+          gravity: 0.1,
+          colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange, Colors.purple],
+        ),
+      ),
+      ]
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      body: Stack(
-        children: [
-          const AmbientBackground(),
-          
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  child: Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        // User pressed back mid-way
+        if (_currentIndex > 0 && _currentIndex < widget.photos.length) {
+          _onEnd(isFinishedEarly: true);
+        } else {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        extendBodyBehindAppBar: true,
+        body: Stack(
+          children: [
+            const AmbientBackground(),
+            
+            SafeArea(
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            if (_currentIndex > 0 && _currentIndex < widget.photos.length) {
+                              _onEnd(isFinishedEarly: true);
+                            } else {
+                              Navigator.pop(context);
+                            }
+                          },
+                          child: Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.1),
@@ -576,10 +673,39 @@ class _SwipeScreenState extends State<SwipeScreen> {
                 )
               ],
             ),
-          )
+          ),
+          
+          // Combo Text Overlay
+          if (_showCombo)
+            Positioned(
+              top: MediaQuery.of(context).size.height * 0.2,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: AnimatedOpacity(
+                  opacity: _showCombo ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: Text(
+                    _comboText,
+                    style: TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w900,
+                      fontStyle: FontStyle.italic,
+                      foreground: Paint()
+                        ..shader = const LinearGradient(
+                          colors: [Color(0xFFFFD60A), Color(0xFFFF9F0A)],
+                        ).createShader(const Rect.fromLTWH(0, 0, 200, 70)),
+                      shadows: [
+                        Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
+                      ]
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       )
-    );
+    ));
   }
 
   Widget _buildGlassButton({required IconData icon, required Color color, required VoidCallback onTap, double size = 72, double iconSize = 32}) {

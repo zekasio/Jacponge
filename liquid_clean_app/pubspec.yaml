@@ -16,6 +16,8 @@ dependencies:
   vibration: ^1.8.3
   shared_preferences: ^2.5.3
   video_player: ^2.9.5
+  shake: ^3.0.0
+  confetti: ^0.8.0
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: false
-  image_path: "../icon_cropped.png"
+  image_path: "../1785526638285.png"
   adaptive_icon_background: "#000000"
   adaptive_icon_foreground: "../icon_cropped.png"
   adaptive_icon_monochrome: "../file_monochrome_correct.png"

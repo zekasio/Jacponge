@@ -496,38 +496,38 @@ class _SwipeScreenState extends State<SwipeScreen> {
           SummaryModal(
             photosToDelete: _pendingDeletes, 
             isFinishedEarly: isFinishedEarly,
-        onConfirm: () async {
-          Navigator.pop(context); 
-          
-          if (_pendingDeletes.isNotEmpty) {
-            List<String> uris = _pendingDeletes.map((e) {
-              if (e.type == AssetType.video) {
-                return "content://media/external/video/media/${e.id}";
+            onConfirm: (selectedDeletes) async {
+              Navigator.pop(context); 
+              
+              if (selectedDeletes.isNotEmpty) {
+                List<String> uris = selectedDeletes.map((e) {
+                  if (e.type == AssetType.video) {
+                    return "content://media/external/video/media/${e.id}";
+                  }
+                  return "content://media/external/images/media/${e.id}";
+                }).toList();
+                
+                NativeBridge.trashPhotos(uris).then((success) {
+                  if (success && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('${selectedDeletes.length} Fotograf Cop Kutusuna Tasindi', style: const TextStyle(fontWeight: FontWeight.w600)), 
+                      backgroundColor: const Color(0xFF34C759),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ));
+                  }
+                });
+                
+                await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
+                if (mounted) {
+                  Navigator.pop(context, selectedDeletes); 
+                }
+              } else {
+                await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
+                if (mounted) Navigator.pop(context);
               }
-              return "content://media/external/images/media/${e.id}";
-            }).toList();
-            
-            NativeBridge.trashPhotos(uris).then((success) {
-              if (success && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Fotograflar Cop Kutusuna Tasindi', style: TextStyle(fontWeight: FontWeight.w600)), 
-                  backgroundColor: const Color(0xFF34C759),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ));
-              }
-            });
-            
-            await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
-            if (mounted) {
-              Navigator.pop(context, _pendingDeletes); 
-            }
-          } else {
-            await _markStatus(isFinishedEarly ? 'halfway' : 'completed');
-            if (mounted) Navigator.pop(context);
-          }
-        },
-      ),
+            },
+          ),
       Align(
         alignment: Alignment.topCenter,
         child: ConfettiWidget(
@@ -705,15 +705,48 @@ class _SwipeScreenState extends State<SwipeScreen> {
 }
 
 // ------ Month Summary Modal (Apple Bottom Sheet style) ------
-class SummaryModal extends StatelessWidget {
+// ------ Month Summary Modal (Apple Bottom Sheet style) ------
+class SummaryModal extends StatefulWidget {
   final List<AssetEntity> photosToDelete;
   final bool isFinishedEarly;
-  final VoidCallback onConfirm;
+  final Function(List<AssetEntity> selectedDeletes) onConfirm;
 
-  const SummaryModal({Key? key, required this.photosToDelete, required this.isFinishedEarly, required this.onConfirm}) : super(key: key);
+  const SummaryModal({
+    Key? key,
+    required this.photosToDelete,
+    required this.isFinishedEarly,
+    required this.onConfirm,
+  }) : super(key: key);
+
+  @override
+  State<SummaryModal> createState() => _SummaryModalState();
+}
+
+class _SummaryModalState extends State<SummaryModal> {
+  late Set<String> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = Set<String>.from(widget.photosToDelete.map((p) => p.id));
+  }
+
+  void _toggleSelection(String id) {
+    setState(() {
+      if (_selectedIds.contains(id)) {
+        _selectedIds.remove(id);
+      } else {
+        _selectedIds.add(id);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final selectedPhotos = widget.photosToDelete
+        .where((p) => _selectedIds.contains(p.id))
+        .toList();
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.65,
       decoration: const BoxDecoration(
@@ -723,52 +756,152 @@ class SummaryModal extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 12),
-          Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(3))),
-          const SizedBox(height: 24),
-          const Text('Temizlik Ozeti', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5)),
-          const SizedBox(height: 8),
-          Text(photosToDelete.isEmpty ? 'Hic fotograf silmediniz.' : '${photosToDelete.length} fotograf cihazin Cop Kutusuna tasinacak.', style: const TextStyle(color: Colors.white70, fontSize: 15), textAlign: TextAlign.center),
-          const SizedBox(height: 24),
-          
-          Expanded(
-            child: photosToDelete.isEmpty 
-              ? const Center(child: Icon(CupertinoIcons.checkmark_seal_fill, size: 80, color: Color(0xFF34C759)))
-              : GridView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: photosToDelete.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 10, mainAxisSpacing: 10),
-              itemBuilder: (context, index) {
-                return FutureBuilder<Uint8List?>(
-                  future: photosToDelete[index].thumbnailDataWithSize(const ThumbnailSize(250, 250)),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return Container(decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(16)));
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.memory(snapshot.data!, fit: BoxFit.cover),
-                          Container(decoration: BoxDecoration(border: Border.all(color: const Color(0xFFFF453A).withOpacity(0.8), width: 2), borderRadius: BorderRadius.circular(16))),
-                          Positioned(top: 6, right: 6, child: Container(padding: const EdgeInsets.all(4), decoration: const BoxDecoration(color: Color(0xFFFF453A), shape: BoxShape.circle), child: const Icon(CupertinoIcons.trash_fill, color: Colors.white, size: 12)))
-                        ],
-                      )
-                    );
-                  }
-                );
-              }
-            )
+          Container(
+            width: 40,
+            height: 5,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(3),
+            ),
           ),
-          
+          const SizedBox(height: 24),
+          const Text(
+            'Temizlik Ozeti',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.photosToDelete.isEmpty
+                ? 'Hic fotograf silmediniz.'
+                : (_selectedIds.isEmpty
+                    ? 'Hicbir fotograf secilmedi.'
+                    : '${_selectedIds.length} / ${widget.photosToDelete.length} fotograf Cop Kutusuna tasinacak.'),
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 20),
+          Expanded(
+            child: widget.photosToDelete.isEmpty
+                ? const Center(
+                    child: Icon(
+                      CupertinoIcons.checkmark_seal_fill,
+                      size: 80,
+                      color: Color(0xFF34C759),
+                    ),
+                  )
+                : GridView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    itemCount: widget.photosToDelete.length,
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 10,
+                      mainAxisSpacing: 10,
+                    ),
+                    itemBuilder: (context, index) {
+                      final photo = widget.photosToDelete[index];
+                      final isSelected = _selectedIds.contains(photo.id);
+
+                      return GestureDetector(
+                        onTap: () => _toggleSelection(photo.id),
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 200),
+                          opacity: isSelected ? 1.0 : 0.45,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                FutureBuilder<Uint8List?>(
+                                  future: photo.thumbnailDataWithSize(
+                                    const ThumbnailSize(250, 250),
+                                  ),
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData) {
+                                      return Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white10,
+                                          borderRadius: BorderRadius.circular(16),
+                                        ),
+                                      );
+                                    }
+                                    return Image.memory(
+                                      snapshot.data!,
+                                      fit: BoxFit.cover,
+                                    );
+                                  },
+                                ),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFFFF453A)
+                                          : const Color(0xFF34C759),
+                                      width: 2.5,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 6,
+                                  right: 6,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 200),
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(0xFFFF453A)
+                                          : const Color(0xFF34C759),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      isSelected
+                                          ? CupertinoIcons.trash_fill
+                                          : CupertinoIcons.checkmark_alt,
+                                      color: Colors.white,
+                                      size: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
           Padding(
             padding: const EdgeInsets.all(24),
             child: SizedBox(
               width: double.infinity,
               height: 56,
               child: CupertinoButton(
-                color: photosToDelete.isEmpty ? (isFinishedEarly ? const Color(0xFFFF9F0A) : const Color(0xFF34C759)) : const Color(0xFFFF453A),
+                color: widget.photosToDelete.isEmpty
+                    ? (widget.isFinishedEarly
+                        ? const Color(0xFFFF9F0A)
+                        : const Color(0xFF34C759))
+                    : (_selectedIds.isEmpty
+                        ? const Color(0xFF34C759)
+                        : const Color(0xFFFF453A)),
                 borderRadius: BorderRadius.circular(16),
-                onPressed: onConfirm,
-                child: Text(photosToDelete.isEmpty ? (isFinishedEarly ? 'Yarida Birak' : 'Ayi Tamamla') : '${photosToDelete.length} Fotografi Cope At', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Colors.white)),
+                onPressed: () => widget.onConfirm(selectedPhotos),
+                child: Text(
+                  widget.photosToDelete.isEmpty
+                      ? (widget.isFinishedEarly ? 'Yarida Birak' : 'Ayi Tamamla')
+                      : (_selectedIds.isEmpty
+                          ? 'Hicbirini Silme'
+                          : '${_selectedIds.length} Fotografi Cope At'),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
               ),
             ),
           )

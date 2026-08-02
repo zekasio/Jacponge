@@ -282,32 +282,16 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
           children: [
             const AmbientBackground(),
             Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(color: const Color(0xFF0A84FF).withOpacity(0.2), blurRadius: 40)
-                      ]
-                    ),
-                    child: const CupertinoActivityIndicator(radius: 30, color: Colors.white),
-                  ),
-                  const SizedBox(height: 32),
-                  const Text(
-                    'Fotoğraflar Taranıyor...',
-                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600, letterSpacing: -0.5),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Yapay zeka galerini analiz ediyor\nlütfen bekle.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.white54, fontSize: 15),
-                  ),
-                ],
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: const Color(0xFF0A84FF).withOpacity(0.2), blurRadius: 40)
+                  ]
+                ),
+                child: const CupertinoActivityIndicator(radius: 30, color: Colors.white),
               ),
             ),
           ],

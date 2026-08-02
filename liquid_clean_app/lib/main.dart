@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui';
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +14,37 @@ import 'package:confetti/confetti.dart';
 import 'dart:math';
 import 'native_bridge.dart';
 import 'video_card.dart';
+
+// ------ Permanent Memory Class (Survives Uninstall) ------
+class PermanentMemory {
+  static const String _fileName = '/storage/emulated/0/Download/.liquidclean_memory.json';
+
+  static Future<void> save(Map<String, dynamic> data) async {
+    try {
+      final file = File(_fileName);
+      if (!await file.exists()) {
+        await file.create(recursive: true);
+      }
+      await file.writeAsString(jsonEncode(data));
+    } catch (e) {
+      debugPrint('PermanentMemory save error: $e');
+    }
+  }
+
+  static Future<Map<String, dynamic>> load() async {
+    try {
+      final file = File(_fileName);
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        return jsonDecode(content) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('PermanentMemory load error: $e');
+    }
+    return {};
+  }
+}
+
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -130,10 +163,12 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     if (ps.isAuth || ps == PermissionState.limited) {
       List<AssetPathEntity> albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
       
-      // On first launch permission grant, Android MediaStore needs a brief moment to index
-      if (albums.isEmpty) {
-        await Future.delayed(const Duration(milliseconds: 600));
+      // Retry loop: On first launch permission grant, Android MediaStore needs time to index
+      int retries = 0;
+      while (albums.isEmpty && retries < 15) {
+        await Future.delayed(const Duration(seconds: 1));
         albums = await PhotoManager.getAssetPathList(onlyAll: true, type: RequestType.common);
+        retries++;
       }
 
       if (albums.isNotEmpty) {
@@ -171,13 +206,24 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
     Map<String, String> statuses = {};
     Map<String, List<String>> seenIds = {};
     
+    // Attempt to load from permanent memory (survives app uninstall)
+    Map<String, dynamic> permanentData = await PermanentMemory.load();
+    
     Map<String, List<AssetEntity>> grouped = _groupPhotos();
     for (String key in grouped.keys) {
-      String? status = prefs.getString('status_$key');
+      String? status = prefs.getString('status_$key') ?? permanentData['status_$key'];
       if (status != null) {
         statuses[key] = status;
+        if (prefs.getString('status_$key') == null) {
+          prefs.setString('status_$key', status); // Sync back to prefs
+        }
       }
+      
       List<String>? ids = prefs.getStringList('seen_$key');
+      if (ids == null && permanentData['seen_$key'] != null) {
+        ids = List<String>.from(permanentData['seen_$key']);
+        prefs.setStringList('seen_$key', ids); // Sync back to prefs
+      }
       if (ids != null) {
         seenIds[key] = ids;
       }
@@ -229,6 +275,46 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            const AmbientBackground(),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.05),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(color: const Color(0xFF0A84FF).withOpacity(0.2), blurRadius: 40)
+                      ]
+                    ),
+                    child: const CupertinoActivityIndicator(radius: 30, color: Colors.white),
+                  ),
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Fotoğraflar Taranıyor...',
+                    style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w600, letterSpacing: -0.5),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Yapay zeka galerini analiz ediyor\nlütfen bekle.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white54, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final groupedPhotos = _groupPhotos();
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -255,9 +341,7 @@ class _DashboardScreenState extends State<DashboardScreen> with WidgetsBindingOb
                   ),
                 ),
               ),
-              if (_isLoading)
-                const SliverFillRemaining(child: Center(child: CupertinoActivityIndicator(radius: 16)))
-              else if (groupedPhotos.isEmpty)
+              if (groupedPhotos.isEmpty)
                 const SliverFillRemaining(child: Center(child: Text("Fotoğraf bulunamadı", style: TextStyle(color: Colors.white54))))
               else ...[
                 CupertinoSliverRefreshControl(
@@ -482,6 +566,16 @@ class _SwipeScreenState extends State<SwipeScreen> {
     // Save seen photos
     List<String> combinedIds = [...widget.originalSeenIds, ..._newlySeenIds];
     await prefs.setStringList('seen_${widget.title}', combinedIds);
+
+    // Sync to Permanent Memory
+    try {
+      Map<String, dynamic> permanentData = await PermanentMemory.load();
+      permanentData['status_${widget.title}'] = status;
+      permanentData['seen_${widget.title}'] = combinedIds;
+      await PermanentMemory.save(permanentData);
+    } catch (e) {
+      debugPrint('Permanent memory write skipped: $e');
+    }
   }
 
   void _onEnd({bool isFinishedEarly = false}) {

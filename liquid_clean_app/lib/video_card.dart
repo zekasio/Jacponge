@@ -20,11 +20,19 @@ class _LiquidCardState extends State<LiquidCard> {
   VideoPlayerController? _videoController;
   bool _isPlaying = false;
   bool _isInitializing = false;
+  
+  Future<File?>? _fileFuture;
+  Future<Uint8List?>? _thumbnailFuture;
 
   @override
   void initState() {
     super.initState();
     widget.stopVideoNotifier.addListener(_onSwipeEvent);
+    if (widget.photo.type == AssetType.video) {
+      _thumbnailFuture = widget.photo.thumbnailDataWithSize(const ThumbnailSize(400, 400));
+    } else {
+      _fileFuture = widget.photo.file;
+    }
   }
 
   void _onSwipeEvent() {
@@ -104,7 +112,7 @@ class _LiquidCardState extends State<LiquidCard> {
                   borderRadius: BorderRadius.circular(30),
                   child: widget.photo.type == AssetType.video
                       ? FutureBuilder<Uint8List?>(
-                          future: widget.photo.thumbnailDataWithSize(const ThumbnailSize(400, 400)),
+                          future: _thumbnailFuture,
                           builder: (context, snapshot) {
                             if (snapshot.hasData) {
                               return Image.memory(snapshot.data!, fit: BoxFit.cover);
@@ -113,7 +121,7 @@ class _LiquidCardState extends State<LiquidCard> {
                           },
                         )
                       : FutureBuilder<File?>(
-                          future: widget.photo.file,
+                          future: _fileFuture,
                           builder: (context, snapshot) {
                             if (snapshot.hasData) {
                               return Image.file(
